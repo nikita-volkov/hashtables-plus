@@ -200,7 +200,7 @@ instance (HashTable t, Key k, Insert s, Lookup s ~ Bool) =>
       Just s -> do
         insertFast s v
 
-instance (HashTable t, HashTable t', Key k) => Delete (MultiTable t k (HashRefSet t' v)) where
+instance (HashTable t, Key k, Delete c, Lookup c ~ Bool) => Delete (MultiTable t k c) where
   delete (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
