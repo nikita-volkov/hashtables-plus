@@ -19,6 +19,8 @@ module HashtablesPlus
   -- * Interface
   Key,
   Collection(..),
+  Lookup(..),
+  Elem(..),
   Insert(..),
   Delete(..),
   Size(..),
@@ -28,7 +30,7 @@ module HashtablesPlus
 )
 where
 
-import HashtablesPlus.Prelude hiding (toList, null, insert, delete, lookup, foldM, forM_)
+import HashtablesPlus.Prelude hiding (elem, toList, null, insert, delete, lookup, foldM, forM_)
 import qualified HashtablesPlus.HashRef as HR
 import qualified Data.HashTable.IO as T
 import qualified Data.HashTable.ST.Basic
@@ -51,20 +53,29 @@ class Collection c where
   -- for multitables it's a key-value pair,
   -- for sets it's the item itself.
   type UniqueKey c
-  -- | 
-  -- A lookup result.
-  -- For tables it's a 'Maybe' value,
-  -- for multitables and sets it's a 'Bool'.
-  type LookupResult c
+  -- |
+  -- An item of the collection.
+  -- For tables and multitables it's a value (from the key-value pair),
+  -- for sets it's the item.
+  type Value c
   -- |
   -- Create a new collection.
   new :: IO c
   -- |
-  -- Lookup an item by a unique key.
-  lookup :: c -> UniqueKey c -> IO (LookupResult c)
-  -- |
   -- Strictly fold over the rows.
   foldM :: c -> r -> (r -> Row c -> IO r) -> IO r
+
+class Collection c => Lookup c where
+  -- |
+  -- Lookup an item by a unique key.
+  lookup :: c -> UniqueKey c -> IO (Maybe (Value c))
+
+class Collection c => Elem c where
+  -- |
+  -- Check whether the collection contains a row by the given unique key.
+  elem :: c -> UniqueKey c -> IO Bool
+  default elem :: Lookup c => c -> UniqueKey c -> IO Bool
+  elem = ((fmap isJust) .) . lookup
 
 class Collection c => Insert c where
   -- | 
@@ -145,10 +156,14 @@ newtype Table t k v = Table (T.IOHashTable t k v)
 instance (HashTable t, Key k) => Collection (Table t k v) where
   type Row (Table t k v) = (k, v)
   type UniqueKey (Table t k v) = k
-  type LookupResult (Table t k v) = Maybe v
+  type Value (Table t k v) = v
   new = Table <$> T.new
-  lookup (Table t) = T.lookup t
   foldM (Table t) z f = T.foldM f z t
+
+instance (HashTable t, Key k) => Lookup (Table t k v) where
+  lookup (Table t) = T.lookup t
+
+instance (HashTable t, Key k) => Elem (Table t k v)
 
 instance (HashTable t, Key k) => Insert (Table t k v) where
   insert (Table t) (k, v) = do
@@ -189,11 +204,13 @@ newtype Set t a = Set (T.IOHashTable t a ())
 instance (HashTable t, Key a) => Collection (Set t a) where
   type Row (Set t a) = a
   type UniqueKey (Set t a) = a
-  type LookupResult (Set t a) = Bool
+  type Value (Set t a) = a
   new = Set <$> T.new
-  lookup (Set table) a = T.lookup table a >>= return . isJust
   foldM (Set table) z f = T.foldM f' z table where 
     f' z (a, _) = f z a
+
+instance (HashTable t, Key a) => Elem (Set t a) where
+  elem (Set table) a = T.lookup table a >>= return . isJust
 
 instance (HashTable t, Key a) => Insert (Set t a) where
   insert (Set table) a = do
@@ -232,11 +249,13 @@ newtype HashRefSet t a = HashRefSet (T.IOHashTable t (StableName a) a)
 instance (HashTable t) => Collection (HashRefSet t a) where
   type Row (HashRefSet t a) = HR.HashRef a
   type UniqueKey (HashRefSet t a) = HR.HashRef a
-  type LookupResult (HashRefSet t a) = Bool
+  type Value (HashRefSet t a) = HR.HashRef a
   new = HashRefSet <$> T.new
-  lookup (HashRefSet table) (HR.HashRef sn a) = T.lookup table sn >>= return . isJust
   foldM (HashRefSet table) z f = T.foldM f' z table where 
     f' z (sn, a) = f z (HR.HashRef sn a)
+
+instance (HashTable t) => Elem (HashRefSet t a) where
+  elem (HashRefSet table) (HR.HashRef sn a) = T.lookup table sn >>= return . isJust
 
 instance (HashTable t) => Insert (HashRefSet t a) where
   insert (HashRefSet table) (HR.HashRef sn a) = do
@@ -275,20 +294,25 @@ data Sized c = Sized !c {-# UNPACK #-} !(IORef Int)
 instance (Collection c) => Collection (Sized c) where
   type Row (Sized c) = Row c
   type UniqueKey (Sized c) = UniqueKey c
-  type LookupResult (Sized c) = LookupResult c
+  type Value (Sized c) = Value c
   new = Sized <$> new <*> newIORef 0
-  lookup (Sized set _) hr = lookup set hr
   foldM (Sized set _) = foldM set
 
+instance (Lookup c) => Lookup (Sized c) where
+  lookup (Sized set _) a = lookup set a
+
+instance (Elem c) => Elem (Sized c) where
+  elem (Sized set _) a = elem set a
+
 instance (Insert c) => Insert (Sized c) where
-  insert (Sized set size) hr = do
-    ok <- insert set hr  
+  insert (Sized set size) a = do
+    ok <- insert set a  
     when ok $ modifyIORef size succ
     return ok
 
 instance (Delete c) => Delete (Sized c) where
-  delete (Sized set size) hr = do
-    ok <- delete set hr
+  delete (Sized set size) a = do
+    ok <- delete set a
     when ok $ modifyIORef size pred
     return ok
 
@@ -320,21 +344,24 @@ instance (Collection c) => Null (Sized c)
 -- @
 newtype MultiTable t k s = MultiTable (T.IOHashTable t k s)
 
-instance (HashTable t, Key k, Collection s, LookupResult s ~ Bool) => 
+instance (HashTable t, Key k, Collection s) => 
          Collection (MultiTable t k s) where
   type Row (MultiTable t k s) = (k, Row s)
   type UniqueKey (MultiTable t k s) = (k, UniqueKey s)
-  type LookupResult (MultiTable t k s) = LookupResult s
+  type Value (MultiTable t k s) = Value s
   new = MultiTable <$> T.new
-  lookup (MultiTable t) (k, v) = do
-    T.lookup t k >>= \case
-      Nothing -> return False
-      Just s -> lookup s v
   foldM (MultiTable t) z f = T.foldM f' z t where
     f' z (k, s) = foldM s z f'' where
       f'' z v = f z (k, v)
 
-instance (HashTable t, Key k, Insert s, LookupResult s ~ Bool) => 
+instance (HashTable t, Key k, Elem s) => 
+         Elem (MultiTable t k s) where
+  elem (MultiTable t) (k, v) = do
+    T.lookup t k >>= \case
+      Nothing -> return False
+      Just s -> elem s v
+
+instance (HashTable t, Key k, Insert s) => 
          Insert (MultiTable t k s) where
   insert (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
@@ -354,7 +381,7 @@ instance (HashTable t, Key k, Insert s, LookupResult s ~ Bool) =>
       Just s -> do
         insertFast s v
 
-instance (HashTable t, Key k, Delete c, LookupResult c ~ Bool) => Delete (MultiTable t k c) where
+instance (HashTable t, Key k, Delete c) => Delete (MultiTable t k c) where
   delete (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
@@ -364,7 +391,7 @@ instance (HashTable t, Key k, Delete c, LookupResult c ~ Bool) => Delete (MultiT
       Nothing -> return ()
       Just s -> deleteFast s v
       
-instance (HashTable t, Key k, Delete c, LookupResult c ~ Bool) => Delete (MultiTable t k (Sized c)) where
+instance (HashTable t, Key k, Delete c) => Delete (MultiTable t k (Sized c)) where
   delete (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
