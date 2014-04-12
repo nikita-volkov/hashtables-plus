@@ -81,6 +81,89 @@ type Key k = (Hashable k, Eq k)
 
 
 
+-- * Standard HashTables
+-------------------------
+
+-- | A newtype wrapper over 'T.BasicHashTable'.
+newtype BasicHashTable k v = BasicHashTable (T.BasicHashTable k v)
+
+instance (Key k) => Collection (BasicHashTable k v) where
+  type Row (BasicHashTable k v) = (k, v)
+  type UniqueKey (BasicHashTable k v) = k
+  type LookupResult (BasicHashTable k v) = Maybe v
+  new = BasicHashTable <$> T.new
+  lookup (BasicHashTable t) = T.lookup t
+  foldM (BasicHashTable t) z f = T.foldM f z t
+
+instance (Key k, Eq v) => Insert (BasicHashTable k v) where
+  insert (BasicHashTable t) (k, v) = do
+    T.lookup t k >>= \case
+      Just v' -> return False 
+      Nothing -> T.insert t k v >> return True
+  insertFast (BasicHashTable t) (k, v) = T.insert t k v
+
+instance (Key k, Eq v) => Delete (BasicHashTable k v) where
+  delete (BasicHashTable t) k = do
+    T.lookup t k >>= \case
+      Just v' -> return False 
+      Nothing -> T.delete t k >> return True
+  deleteFast (BasicHashTable t) k = T.delete t k
+
+
+-- | A newtype wrapper over 'T.CuckooHashTable'.
+newtype CuckooHashTable k v = CuckooHashTable (T.CuckooHashTable k v)
+
+instance (Key k) => Collection (CuckooHashTable k v) where
+  type Row (CuckooHashTable k v) = (k, v)
+  type UniqueKey (CuckooHashTable k v) = k
+  type LookupResult (CuckooHashTable k v) = Maybe v
+  new = CuckooHashTable <$> T.new
+  lookup (CuckooHashTable t) = T.lookup t
+  foldM (CuckooHashTable t) z f = T.foldM f z t
+
+instance (Key k, Eq v) => Insert (CuckooHashTable k v) where
+  insert (CuckooHashTable t) (k, v) = do
+    T.lookup t k >>= \case
+      Just v' -> return False 
+      Nothing -> T.insert t k v >> return True
+  insertFast (CuckooHashTable t) (k, v) = T.insert t k v
+
+instance (Key k, Eq v) => Delete (CuckooHashTable k v) where
+  delete (CuckooHashTable t) k = do
+    T.lookup t k >>= \case
+      Just v' -> return False 
+      Nothing -> T.delete t k >> return True
+  deleteFast (CuckooHashTable t) k = T.delete t k
+
+
+-- | A newtype wrapper over 'T.LinearHashTable'.
+newtype LinearHashTable k v = LinearHashTable (T.LinearHashTable k v)
+
+instance (Key k) => Collection (LinearHashTable k v) where
+  type Row (LinearHashTable k v) = (k, v)
+  type UniqueKey (LinearHashTable k v) = k
+  type LookupResult (LinearHashTable k v) = Maybe v
+  new = LinearHashTable <$> T.new
+  lookup (LinearHashTable t) = T.lookup t
+  foldM (LinearHashTable t) z f = T.foldM f z t
+
+instance (Key k, Eq v) => Insert (LinearHashTable k v) where
+  insert (LinearHashTable t) (k, v) = do
+    T.lookup t k >>= \case
+      Just v' -> return False 
+      Nothing -> T.insert t k v >> return True
+  insertFast (LinearHashTable t) (k, v) = T.insert t k v
+
+instance (Key k, Eq v) => Delete (LinearHashTable k v) where
+  delete (LinearHashTable t) k = do
+    T.lookup t k >>= \case
+      Just v' -> return False 
+      Nothing -> T.delete t k >> return True
+  deleteFast (LinearHashTable t) k = T.delete t k
+
+
+
+
 -- * Sets
 -------------------------
 
