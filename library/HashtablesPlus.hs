@@ -1,7 +1,32 @@
 {-# LANGUAGE UndecidableInstances #-}
-module HashtablesPlus where
+module HashtablesPlus 
+(
+  -- * HashTable Implementations
+  -- | 
+  -- These are implementations of a class 'HashTable',
+  -- which provide different performance characteristics.
+  -- They are used as parameters to data structures.
+  Basic,
+  Cuckoo,
+  Linear,
+  -- * Data Structures
+  Table,
+  Set,
+  HashRefSet,
+  MultiTable,
+  Sized,
+  -- * Interface
+  Collection(..),
+  Insert(..),
+  Delete(..),
+  Size(..),
+  forM_,
+  toList,
+  null,
+)
+where
 
-import HashtablesPlus.Prelude hiding (null, insert, delete, lookup, foldM, forM_)
+import HashtablesPlus.Prelude hiding (toList, null, insert, delete, lookup, foldM, forM_)
 import qualified HashtablesPlus.HashRef as HR
 import qualified Data.HashTable.IO as T
 import qualified Data.HashTable.ST.Basic
@@ -261,7 +286,7 @@ instance (Collection c) => Size (Sized c) where
 
 
 
--- * Multitable
+-- * MultiTable
 -------------------------
 
 -- |
