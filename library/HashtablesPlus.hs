@@ -6,27 +6,33 @@ import qualified HashtablesPlus.HashRef as HR
 import qualified Data.HashTable.IO as T
 
 
-type Key k = (Hashable k, Eq k)
+-- * Shared Interface
+-------------------------
 
 class Collection c where
   -- | 
   -- A row of the collection. 
-  -- For tables it's a key-value pair, 
+  -- For tables and multitables it's a key-value pair, 
   -- for sets it's just the item.
   type Row c
   -- | 
   -- A row identifier.
   -- For tables it's a key,
+  -- for multitables it's a key-value pair,
   -- for sets it's the item itself.
   type RowID c
   -- | 
   -- A lookup result.
   -- For tables it's a 'Maybe' value,
-  -- for sets it's a 'Bool'.
+  -- for multitables and sets it's a 'Bool'.
   type Lookup c
   new :: IO c
+  lookup :: c -> RowID c -> IO (Lookup c)
+  foldM :: c -> r -> (r -> Row c -> IO r) -> IO r
+
+class Collection c => Insert c where
   -- | 
-  -- Insert a row into the collection.
+  -- Insert a row into a collection.
   -- 
   -- Returns a boolean signifying the success of the operation.
   -- I.e., whether it produced any changes.
@@ -35,8 +41,10 @@ class Collection c where
   -- Same as 'insert', but avoiding the calculation of the operation result.
   insertFast :: c -> Row c -> IO ()
   insertFast = (void .) . insert
+
+class Collection c => Delete c where
   -- |
-  -- Delete a row from the collection by its identifier.
+  -- Delete a row from a collection by its identifier.
   -- 
   -- Returns a boolean signifying the success of the operation.
   -- I.e., whether it produced any changes.
@@ -45,14 +53,12 @@ class Collection c where
   -- Same as 'delete', but avoiding the calculation of the operation result.
   deleteFast :: c -> RowID c -> IO ()
   deleteFast = (void .) . delete
-  lookup :: c -> RowID c -> IO (Lookup c)
-  foldM :: c -> r -> (r -> Row c -> IO r) -> IO r
 
-class Collection s => Sizeable s where
+class Collection c => Size c where
   -- |
   -- /O(1)/.
   -- Get the size of the collection.
-  size :: s -> IO Int
+  size :: c -> IO Int
 
 forM_ :: (Collection c) => c -> (Row c -> IO ()) -> IO ()
 forM_ c f = foldM c () (\() r -> f r)
@@ -64,11 +70,19 @@ toList :: (Collection c) => c -> IO [Row c]
 toList c = foldM c [] (\li ro -> return $ ro : li)
 
 -- |
--- /O(1)/
+-- /O(1)/.
 -- Check whether a sizeable collection is empty.
-null :: (Sizeable s) => s -> IO Bool
+null :: (Size s) => s -> IO Bool
 null = fmap (<= 0) . size
 
+-- |
+-- A constraint for values usable as hash table key.
+type Key k = (Hashable k, Eq k)
+
+
+
+-- * Collections
+-------------------------
 
 -- | A set of 'HR.HashRef's.
 newtype HashRefSet t a = HashRefSet (T.IOHashTable t (StableName a) a)
@@ -78,25 +92,38 @@ instance (HashTable t) => Collection (HashRefSet t a) where
   type RowID (HashRefSet t a) = HR.HashRef a
   type Lookup (HashRefSet t a) = Bool
   new = HashRefSet <$> T.new
+  lookup (HashRefSet table) (HR.HashRef sn a) = T.lookup table sn >>= return . isJust
+  foldM (HashRefSet table) z f = T.foldM f' z table where 
+    f' z (sn, a) = f z (HR.HashRef sn a)
+
+instance (HashTable t) => Insert (HashRefSet t a) where
   insert (HashRefSet table) (HR.HashRef sn a) = do
     T.lookup table sn >>= \case
       Just _ -> return False
       Nothing -> do
         T.insert table sn a
         return True
+  insertFast (HashRefSet table) (HR.HashRef sn a) = T.insert table sn a
+
+instance (HashTable t) => Delete (HashRefSet t a) where
   delete (HashRefSet table) (HR.HashRef sn a) = do
     T.lookup table sn >>= \case
       Just _ -> do
         T.delete table sn
         return True
       Nothing -> return False
-  insertFast (HashRefSet table) (HR.HashRef sn a) = T.insert table sn a
   deleteFast (HashRefSet table) (HR.HashRef sn a) = T.delete table sn
-  lookup (HashRefSet table) (HR.HashRef sn a) = T.lookup table sn >>= return . isJust
-  foldM (HashRefSet table) z f = T.foldM f' z table where 
-    f' z (sn, a) = f z (HR.HashRef sn a)
 
 
+-- |
+-- A multitable with underlying hashtable @t@, key @k@ and 
+-- a set implementation @s@.
+-- 
+-- E.g.:
+-- 
+-- @
+-- type MyMultiTable k v = MultiTable 'T.BasicHashTable' k ('Set' 'T.BasicHashTable' v)
+-- @
 newtype MultiTable t k s = MultiTable (T.IOHashTable t k s)
 
 instance (HashTable t, Key k, Collection s, Lookup s ~ Bool) => 
@@ -105,6 +132,16 @@ instance (HashTable t, Key k, Collection s, Lookup s ~ Bool) =>
   type RowID (MultiTable t k s) = (k, RowID s)
   type Lookup (MultiTable t k s) = Lookup s
   new = MultiTable <$> T.new
+  lookup (MultiTable t) (k, v) = do
+    T.lookup t k >>= \case
+      Nothing -> return False
+      Just s -> lookup s v
+  foldM (MultiTable t) z f = T.foldM f' z t where
+    f' z (k, s) = foldM s z f'' where
+      f'' z v = f z (k, v)
+
+instance (HashTable t, Key k, Insert s, Lookup s ~ Bool) => 
+         Insert (MultiTable t k s) where
   insert (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> do
@@ -122,6 +159,8 @@ instance (HashTable t, Key k, Collection s, Lookup s ~ Bool) =>
         T.insert t k s
       Just s -> do
         insertFast s v
+
+instance (HashTable t, Key k) => Delete (MultiTable t k (HashRefSet t v)) where
   delete (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
@@ -130,11 +169,4 @@ instance (HashTable t, Key k, Collection s, Lookup s ~ Bool) =>
     T.lookup t k >>= \case
       Nothing -> return ()
       Just s -> deleteFast s v
-  lookup (MultiTable t) (k, v) = do
-    T.lookup t k >>= \case
-      Nothing -> return False
-      Just s -> lookup s v
-  foldM (MultiTable t) z f = T.foldM f' z t where
-    f' z (k, s) = foldM s z f'' where
-      f'' z v = f z (k, v)
-
+      
