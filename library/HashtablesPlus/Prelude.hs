@@ -53,6 +53,10 @@ import Development.Placeholders as Exports
 -- hashable
 import Data.Hashable as Exports (Hashable(..), hash, hashWithSalt)
 
+-- hashtables
+import Data.HashTable.Class as Exports (HashTable)
+
+
 import qualified Debug.Trace.LocationTH
 
 traceM :: (Monad m) => String -> m ()
