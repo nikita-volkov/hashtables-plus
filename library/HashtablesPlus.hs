@@ -96,15 +96,16 @@ instance (HashTable t) => Collection (HashRefSet t a) where
   foldM (HashRefSet table) z f = T.foldM f' z table where 
     f' z (sn, a) = f z (HR.HashRef sn a)
 
--- TODO: change to a multitable parameterized with a set type
-newtype HashRefMultiTable t k v = HashRefMultiTable (T.IOHashTable t k (HashRefSet t v))
 
-instance (HashTable t, Key k) => Collection (HashRefMultiTable t k v) where
-  type Row (HashRefMultiTable t k v) = (k, HR.HashRef v)
-  type RowID (HashRefMultiTable t k v) = (k, HR.HashRef v)
-  type Lookup (HashRefMultiTable t k v) = Bool
-  new = HashRefMultiTable <$> T.new
-  insert (HashRefMultiTable t) (k, v) = do
+newtype MultiTable t k s = MultiTable (T.IOHashTable t k s)
+
+instance (HashTable t, Key k, Collection s, Lookup s ~ Bool) => 
+         Collection (MultiTable t k s) where
+  type Row (MultiTable t k s) = (k, Row s)
+  type RowID (MultiTable t k s) = (k, RowID s)
+  type Lookup (MultiTable t k s) = Lookup s
+  new = MultiTable <$> T.new
+  insert (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> do
         s <- new
@@ -113,7 +114,7 @@ instance (HashTable t, Key k) => Collection (HashRefMultiTable t k v) where
         return True
       Just s -> do
         insert s v
-  insertFast (HashRefMultiTable t) (k, v) = do
+  insertFast (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> do
         s <- new
@@ -121,19 +122,19 @@ instance (HashTable t, Key k) => Collection (HashRefMultiTable t k v) where
         T.insert t k s
       Just s -> do
         insertFast s v
-  delete (HashRefMultiTable t) (k, v) = do
+  delete (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
       Just s -> delete s v
-  deleteFast (HashRefMultiTable t) (k, v) = do
+  deleteFast (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return ()
       Just s -> deleteFast s v
-  lookup (HashRefMultiTable t) (k, v) = do
+  lookup (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
       Just s -> lookup s v
-  foldM (HashRefMultiTable t) z f = T.foldM f' z t where
+  foldM (MultiTable t) z f = T.foldM f' z t where
     f' z (k, s) = foldM s z f'' where
       f'' z v = f z (k, v)
 
