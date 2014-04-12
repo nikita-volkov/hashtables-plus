@@ -4,6 +4,9 @@ module HashtablesPlus where
 import HashtablesPlus.Prelude hiding (null, insert, delete, lookup, foldM, forM_)
 import qualified HashtablesPlus.HashRef as HR
 import qualified Data.HashTable.IO as T
+import qualified Data.HashTable.ST.Basic
+import qualified Data.HashTable.ST.Cuckoo
+import qualified Data.HashTable.ST.Linear
 
 
 -- * Shared Interface
@@ -81,86 +84,49 @@ type Key k = (Hashable k, Eq k)
 
 
 
--- * Standard HashTables
+-- * 'HashTable' Implementations
 -------------------------
 
--- | A newtype wrapper over 'T.BasicHashTable'.
-newtype BasicHashTable k v = BasicHashTable (T.BasicHashTable k v)
+type Basic = Data.HashTable.ST.Basic.HashTable
+type Cuckoo = Data.HashTable.ST.Cuckoo.HashTable
+type Linear = Data.HashTable.ST.Linear.HashTable
 
-instance (Key k) => Collection (BasicHashTable k v) where
-  type Row (BasicHashTable k v) = (k, v)
-  type UniqueKey (BasicHashTable k v) = k
-  type LookupResult (BasicHashTable k v) = Maybe v
-  new = BasicHashTable <$> T.new
-  lookup (BasicHashTable t) = T.lookup t
-  foldM (BasicHashTable t) z f = T.foldM f z t
 
-instance (Key k, Eq v) => Insert (BasicHashTable k v) where
-  insert (BasicHashTable t) (k, v) = do
+
+-- * HashTable
+-------------------------
+
+-- | 
+-- A newtype wrapper over a 'HashTable' implementation @t@.
+-- 
+-- E.g.:
+-- 
+-- @
+-- type CuckooTable k v = 'Table' 'Cuckoo' k v
+-- @
+newtype Table t k v = Table (T.IOHashTable t k v)
+
+instance (HashTable t, Key k) => Collection (Table t k v) where
+  type Row (Table t k v) = (k, v)
+  type UniqueKey (Table t k v) = k
+  type LookupResult (Table t k v) = Maybe v
+  new = Table <$> T.new
+  lookup (Table t) = T.lookup t
+  foldM (Table t) z f = T.foldM f z t
+
+instance (HashTable t, Key k, Eq v) => Insert (Table t k v) where
+  insert (Table t) (k, v) = do
     T.lookup t k >>= \case
       Just v' -> return False 
       Nothing -> T.insert t k v >> return True
-  insertFast (BasicHashTable t) (k, v) = T.insert t k v
+  insertFast (Table t) (k, v) = T.insert t k v
 
-instance (Key k, Eq v) => Delete (BasicHashTable k v) where
-  delete (BasicHashTable t) k = do
+instance (HashTable t, Key k, Eq v) => Delete (Table t k v) where
+  delete (Table t) k = do
     T.lookup t k >>= \case
       Just v' -> return False 
       Nothing -> T.delete t k >> return True
-  deleteFast (BasicHashTable t) k = T.delete t k
-
-
--- | A newtype wrapper over 'T.CuckooHashTable'.
-newtype CuckooHashTable k v = CuckooHashTable (T.CuckooHashTable k v)
-
-instance (Key k) => Collection (CuckooHashTable k v) where
-  type Row (CuckooHashTable k v) = (k, v)
-  type UniqueKey (CuckooHashTable k v) = k
-  type LookupResult (CuckooHashTable k v) = Maybe v
-  new = CuckooHashTable <$> T.new
-  lookup (CuckooHashTable t) = T.lookup t
-  foldM (CuckooHashTable t) z f = T.foldM f z t
-
-instance (Key k, Eq v) => Insert (CuckooHashTable k v) where
-  insert (CuckooHashTable t) (k, v) = do
-    T.lookup t k >>= \case
-      Just v' -> return False 
-      Nothing -> T.insert t k v >> return True
-  insertFast (CuckooHashTable t) (k, v) = T.insert t k v
-
-instance (Key k, Eq v) => Delete (CuckooHashTable k v) where
-  delete (CuckooHashTable t) k = do
-    T.lookup t k >>= \case
-      Just v' -> return False 
-      Nothing -> T.delete t k >> return True
-  deleteFast (CuckooHashTable t) k = T.delete t k
-
-
--- | A newtype wrapper over 'T.LinearHashTable'.
-newtype LinearHashTable k v = LinearHashTable (T.LinearHashTable k v)
-
-instance (Key k) => Collection (LinearHashTable k v) where
-  type Row (LinearHashTable k v) = (k, v)
-  type UniqueKey (LinearHashTable k v) = k
-  type LookupResult (LinearHashTable k v) = Maybe v
-  new = LinearHashTable <$> T.new
-  lookup (LinearHashTable t) = T.lookup t
-  foldM (LinearHashTable t) z f = T.foldM f z t
-
-instance (Key k, Eq v) => Insert (LinearHashTable k v) where
-  insert (LinearHashTable t) (k, v) = do
-    T.lookup t k >>= \case
-      Just v' -> return False 
-      Nothing -> T.insert t k v >> return True
-  insertFast (LinearHashTable t) (k, v) = T.insert t k v
-
-instance (Key k, Eq v) => Delete (LinearHashTable k v) where
-  delete (LinearHashTable t) k = do
-    T.lookup t k >>= \case
-      Just v' -> return False 
-      Nothing -> T.delete t k >> return True
-  deleteFast (LinearHashTable t) k = T.delete t k
-
+  deleteFast (Table t) k = T.delete t k
 
 
 
@@ -176,6 +142,12 @@ instance (Key k, Eq v) => Delete (LinearHashTable k v) where
 -- 
 -- @t@ is the underlying 'HashTable' implementation, 
 -- @a@ is the item.
+-- 
+-- E.g.:
+-- 
+-- @
+-- type CuckooSet a = 'Set' 'Cuckoo' a
+-- @
 newtype Set t a = Set (T.IOHashTable t a ())
 
 instance (HashTable t, Key a) => Collection (Set t a) where
@@ -213,6 +185,12 @@ instance (HashTable t, Key a) => Delete (Set t a) where
 -- 
 -- @t@ is the underlying 'HashTable' implementation, 
 -- @a@ is the item.
+-- 
+-- E.g.:
+-- 
+-- @
+-- type LinearHashRefSet a = 'HashRefSet' 'Linear' a
+-- @
 newtype HashRefSet t a = HashRefSet (T.IOHashTable t (StableName a) a)
 
 instance (HashTable t) => Collection (HashRefSet t a) where
@@ -249,7 +227,13 @@ instance (HashTable t) => Delete (HashRefSet t a) where
 
 -- |
 -- A wrapper over a 'Collection',
--- which adds cheap 'null' and 'size' functions.
+-- which adds 'null' and 'size' functions of /O(1)/ complexity.
+-- 
+-- E.g.:
+-- 
+-- @
+-- type SizedLinearTable k v = 'Sized' ('Table' 'Linear' k v)
+-- @
 data Sized c = Sized !c {-# UNPACK #-} !(IORef Int)
 
 instance (Collection c) => Collection (Sized c) where
@@ -287,7 +271,14 @@ instance (Collection c) => Size (Sized c) where
 -- E.g.:
 -- 
 -- @
--- type MyMultiTable k v = MultiTable 'T.BasicHashTable' k ('Set' 'T.BasicHashTable' v)
+-- type BasicMultiTable k v = 'MultiTable' 'Basic' k ('Set' 'Basic' v)
+-- @
+-- 
+-- If a 'Sized' implementation of set is specified, 
+-- a more space efficient instance of 'Delete' will be used. E.g.:
+-- 
+-- @
+-- MultiTable Basic k ('Sized' (Set Basic v))
 -- @
 newtype MultiTable t k s = MultiTable (T.IOHashTable t k s)
 
