@@ -42,6 +42,7 @@ library
   other-modules:
     HashtablesPlus.Prelude
   exposed-modules:
+    HashtablesPlus.HashRef
   build-depends:
     -- data:
     hashtables == 1.1.*,
