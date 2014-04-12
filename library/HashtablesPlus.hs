@@ -1,7 +1,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 module HashtablesPlus where
 
-import HashtablesPlus.Prelude hiding (insert, delete, lookup, foldM, forM_)
+import HashtablesPlus.Prelude hiding (null, insert, delete, lookup, foldM, forM_)
 import qualified HashtablesPlus.HashRef as HR
 import qualified Data.HashTable.IO as T
 
@@ -117,36 +117,38 @@ instance (HashTable t) => Delete (HashRefSet t a) where
       Nothing -> return False
   deleteFast (HashRefSet table) (HR.HashRef sn a) = T.delete table sn
 
--- ** HashRefSetWithSize
+
+
+-- * Sized
 -------------------------
 
 -- |
--- A wrapper over a 'HashRefSet',
+-- A wrapper over a collection,
 -- which adds cheap 'null' and 'size' functions.
-data HashRefSetWithSize t a = HashRefSetWithSize !(HashRefSet t a) {-# UNPACK #-} !(IORef Int)
+data Sized c = Sized !c {-# UNPACK #-} !(IORef Int)
 
-instance (HashTable t) => Collection (HashRefSetWithSize t a) where
-  type Row (HashRefSetWithSize t a) = HR.HashRef a
-  type RowID (HashRefSetWithSize t a) = HR.HashRef a
-  type Lookup (HashRefSetWithSize t a) = Bool
-  new = HashRefSetWithSize <$> new <*> newIORef 0
-  lookup (HashRefSetWithSize set _) hr = lookup set hr
-  foldM (HashRefSetWithSize set _) = foldM set
+instance (Collection c) => Collection (Sized c) where
+  type Row (Sized c) = Row c
+  type RowID (Sized c) = RowID c
+  type Lookup (Sized c) = Lookup c
+  new = Sized <$> new <*> newIORef 0
+  lookup (Sized set _) hr = lookup set hr
+  foldM (Sized set _) = foldM set
 
-instance (HashTable t) => Insert (HashRefSetWithSize t a) where
-  insert (HashRefSetWithSize set size) hr = do
+instance (Insert c) => Insert (Sized c) where
+  insert (Sized set size) hr = do
     ok <- insert set hr  
     when ok $ modifyIORef size succ
     return ok
 
-instance (HashTable t) => Delete (HashRefSetWithSize t a) where
-  delete (HashRefSetWithSize set size) hr = do
+instance (Delete c) => Delete (Sized c) where
+  delete (Sized set size) hr = do
     ok <- delete set hr
     when ok $ modifyIORef size pred
     return ok
 
-instance (HashTable t) => Size (HashRefSetWithSize t a) where
-  size (HashRefSetWithSize _ s) = readIORef s
+instance (Collection c) => Size (Sized c) where
+  size (Sized _ s) = readIORef s
 
 
 
@@ -207,4 +209,25 @@ instance (HashTable t, HashTable t', Key k) => Delete (MultiTable t k (HashRefSe
     T.lookup t k >>= \case
       Nothing -> return ()
       Just s -> deleteFast s v
+      
+instance (HashTable t, Key k, Delete c, Lookup c ~ Bool) => Delete (MultiTable t k (Sized c)) where
+  delete (MultiTable t) (k, v) = do
+    T.lookup t k >>= \case
+      Nothing -> return False
+      Just s -> do
+        delete s v >>= \case
+          False -> return False
+          True -> do
+            null s >>= \case
+              False -> return ()
+              True -> T.delete t k
+            return True
+  deleteFast (MultiTable t) (k, v) = do
+    T.lookup t k >>= \case
+      Nothing -> return ()
+      Just s -> do
+        deleteFast s v
+        null s >>= \case
+          False -> return ()
+          True -> T.delete t k
       
