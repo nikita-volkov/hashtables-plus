@@ -84,6 +84,41 @@ type Key k = (Hashable k, Eq k)
 -- * Sets
 -------------------------
 
+-- ** Set
+-------------------------
+
+-- | 
+-- A set of values, 
+-- which have instances for 'Eq' and 'Hashable'.
+newtype Set t a = Set (T.IOHashTable t a ())
+
+instance (HashTable t, Key a) => Collection (Set t a) where
+  type Row (Set t a) = a
+  type RowID (Set t a) = a
+  type Lookup (Set t a) = Bool
+  new = Set <$> T.new
+  lookup (Set table) a = T.lookup table a >>= return . isJust
+  foldM (Set table) z f = T.foldM f' z table where 
+    f' z (a, _) = f z a
+
+instance (HashTable t, Key a) => Insert (Set t a) where
+  insert (Set table) a = do
+    T.lookup table a >>= \case
+      Just _ -> return False
+      Nothing -> do
+        T.insert table a ()
+        return True
+  insertFast (Set table) a = T.insert table a ()
+
+instance (HashTable t, Key a) => Delete (Set t a) where
+  delete (Set table) a = do
+    T.lookup table a >>= \case
+      Just _ -> do
+        T.delete table a
+        return True
+      Nothing -> return False
+  deleteFast (Set table) a = T.delete table a
+
 -- ** HashRefSet
 -------------------------
 
