@@ -150,14 +150,14 @@ instance (HashTable t, Key k) => Collection (Table t k v) where
   lookup (Table t) = T.lookup t
   foldM (Table t) z f = T.foldM f z t
 
-instance (HashTable t, Key k, Eq v) => Insert (Table t k v) where
+instance (HashTable t, Key k) => Insert (Table t k v) where
   insert (Table t) (k, v) = do
     T.lookup t k >>= \case
       Just v' -> return False 
       Nothing -> T.insert t k v >> return True
   insertFast (Table t) (k, v) = T.insert t k v
 
-instance (HashTable t, Key k, Eq v) => Delete (Table t k v) where
+instance (HashTable t, Key k) => Delete (Table t k v) where
   delete (Table t) k = do
     T.lookup t k >>= \case
       Just v' -> return False 
