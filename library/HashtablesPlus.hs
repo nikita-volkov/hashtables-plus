@@ -90,6 +90,9 @@ type Key k = (Hashable k, Eq k)
 -- | 
 -- A set of values, 
 -- which have instances for 'Eq' and 'Hashable'.
+-- 
+-- @t@ is the underlying 'HashTable' implementation, 
+-- @a@ is the item.
 newtype Set t a = Set (T.IOHashTable t a ())
 
 instance (HashTable t, Key a) => Collection (Set t a) where
@@ -122,7 +125,11 @@ instance (HashTable t, Key a) => Delete (Set t a) where
 -- ** HashRefSet
 -------------------------
 
--- | A set of 'HR.HashRef's.
+-- | 
+-- A specialized set of 'HR.HashRef's.
+-- 
+-- @t@ is the underlying 'HashTable' implementation, 
+-- @a@ is the item.
 newtype HashRefSet t a = HashRefSet (T.IOHashTable t (StableName a) a)
 
 instance (HashTable t) => Collection (HashRefSet t a) where
@@ -158,7 +165,7 @@ instance (HashTable t) => Delete (HashRefSet t a) where
 -------------------------
 
 -- |
--- A wrapper over a collection,
+-- A wrapper over a 'Collection',
 -- which adds cheap 'null' and 'size' functions.
 data Sized c = Sized !c {-# UNPACK #-} !(IORef Int)
 
@@ -191,7 +198,7 @@ instance (Collection c) => Size (Sized c) where
 -------------------------
 
 -- |
--- A multitable with underlying hashtable @t@, key @k@ and 
+-- A multitable with underlying 'HashTable' @t@, key @k@ and 
 -- a set implementation @s@.
 -- 
 -- E.g.:
