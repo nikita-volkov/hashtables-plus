@@ -1,28 +1,29 @@
 {-# LANGUAGE UndecidableInstances #-}
 module HashtablesPlus 
 (
-  -- * HashTable Implementations
-  -- | 
-  -- These are implementations of a class 'HashTable',
-  -- which provide different performance characteristics.
-  -- They are used as parameters to data structures.
-  Basic,
-  Cuckoo,
-  Linear,
   -- * Data Structures
   Table,
   Set,
   HashRefSet,
   MultiTable,
   Sized,
+  -- * HashTable Implementations
+  -- | 
+  -- These are aliases of implementations of a class 'HashTable',
+  -- which provide different performance and memory consumption characteristics.
+  -- They are used as parameters to data structures.
+  -- For more info refer to the documentation on aliased types.
+  Basic,
+  Cuckoo,
+  Linear,
   -- * Interface
   Collection(..),
   Insert(..),
   Delete(..),
   Size(..),
+  Null(..),
   forM_,
   toList,
-  null,
 )
 where
 
@@ -54,16 +55,22 @@ class Collection c where
   -- For tables it's a 'Maybe' value,
   -- for multitables and sets it's a 'Bool'.
   type LookupResult c
+  -- |
+  -- Create a new collection.
   new :: IO c
+  -- |
+  -- Lookup an item by a unique key.
   lookup :: c -> UniqueKey c -> IO (LookupResult c)
+  -- |
+  -- Strictly fold over the rows.
   foldM :: c -> r -> (r -> Row c -> IO r) -> IO r
 
 class Collection c => Insert c where
   -- | 
   -- Insert a row into a collection.
   -- 
-  -- Returns a boolean signifying the success of the operation.
-  -- I.e., whether it produced any changes.
+  -- Returns a boolean signifying whether a row has been inserted.
+  -- Note that if a new row has been replaced it returns 'False'.
   insert :: c -> Row c -> IO Bool
   -- |
   -- Same as 'insert', but avoiding the calculation of the operation result.
@@ -74,8 +81,7 @@ class Collection c => Delete c where
   -- |
   -- Delete a row from a collection by its identifier.
   -- 
-  -- Returns a boolean signifying the success of the operation.
-  -- I.e., whether it produced any changes.
+  -- Returns a boolean signifying whether a row has been removed.
   delete :: c -> UniqueKey c -> IO Bool
   -- |
   -- Same as 'delete', but avoiding the calculation of the operation result.
@@ -85,9 +91,19 @@ class Collection c => Delete c where
 class Collection c => Size c where
   -- |
   -- /O(1)/.
-  -- Get the size of the collection.
+  -- Get the size of a collection.
   size :: c -> IO Int
 
+class Collection c => Null c where
+  -- |
+  -- /O(1)/.
+  -- Check whether a collection is empty.
+  null :: c -> IO Bool
+  default null :: (Size c) => c -> IO Bool
+  null = fmap (<= 0) . size
+
+-- |
+-- Traverse thru all the rows of a collection with side effects.
 forM_ :: (Collection c) => c -> (Row c -> IO ()) -> IO ()
 forM_ c f = foldM c () (\() r -> f r)
 
@@ -96,12 +112,6 @@ forM_ c f = foldM c () (\() r -> f r)
 -- Convert the collection to a list.
 toList :: (Collection c) => c -> IO [Row c]
 toList c = foldM c [] (\li ro -> return $ ro : li)
-
--- |
--- /O(1)/.
--- Check whether a sizeable collection is empty.
-null :: (Size s) => s -> IO Bool
-null = fmap (<= 0) . size
 
 -- |
 -- A constraint for values usable as hash table key.
@@ -283,6 +293,8 @@ instance (Delete c) => Delete (Sized c) where
 
 instance (Collection c) => Size (Sized c) where
   size (Sized _ s) = readIORef s
+
+instance (Collection c) => Null (Sized c)
 
 
 
