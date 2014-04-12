@@ -17,6 +17,7 @@ module HashtablesPlus
   Cuckoo,
   Linear,
   -- * Interface
+  Key,
   Collection(..),
   Insert(..),
   Delete(..),
