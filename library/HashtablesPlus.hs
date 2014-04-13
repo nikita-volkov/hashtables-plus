@@ -317,26 +317,26 @@ type instance Value (Sized c) = Value c
 
 instance (Collection c) => Collection (Sized c) where
   new = Sized <$> new <*> newIORef 0
-  foldM (Sized set _) = foldM set
+  foldM (Sized c _) = foldM c
 
 instance (Lookup c) => Lookup (Sized c) where
-  lookup (Sized set _) a = lookup set a
-
-instance (Elem c) => Elem (Sized c) where
-  elem (Sized set _) a = elem set a
+  lookup (Sized c _) a = lookup c a
 
 instance (LookupMulti c) => LookupMulti (Sized c) where
   lookupMulti (Sized c _) k = lookupMulti c k
 
+instance (Elem c) => Elem (Sized c) where
+  elem (Sized c _) a = elem c a
+
 instance (Insert c) => Insert (Sized c) where
-  insert (Sized set size) a = do
-    ok <- insert set a  
+  insert (Sized c size) a = do
+    ok <- insert c a  
     when ok $ modifyIORef size succ
     return ok
 
 instance (Delete c) => Delete (Sized c) where
-  delete (Sized set size) a = do
-    ok <- delete set a
+  delete (Sized c size) a = do
+    ok <- delete c a
     when ok $ modifyIORef size pred
     return ok
 
