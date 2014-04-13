@@ -97,8 +97,8 @@ class Collection c => Insert c where
   -- | 
   -- Insert a row into a collection.
   -- 
-  -- Returns a boolean signifying whether a row has been inserted.
-  -- Note that if a new row has been replaced it returns 'False'.
+  -- Returns a boolean signifying whether a new row has been inserted.
+  -- Note that if a row has been replaced it returns 'False'.
   insert :: c -> Row c -> IO Bool
   -- |
   -- Same as 'insert', but avoiding the calculation of the operation result.
@@ -137,7 +137,7 @@ forM_ c f = foldM c () (\() r -> f r)
 
 -- |
 -- /O(n)/.
--- Convert the collection to a list.
+-- Convert a collection to a list.
 toList :: (Collection c) => c -> IO [Row c]
 toList c = foldM c [] (\li ro -> return $ ro : li)
 
@@ -351,7 +351,7 @@ instance (Collection c) => Null (Sized c)
 -------------------------
 
 -- |
--- A multitable with underlying 'HashTable' @t@, key @k@ and 
+-- A multitable (or multimap) with underlying 'HashTable' @t@, key @k@ and 
 -- a set implementation @s@.
 -- 
 -- E.g.:
