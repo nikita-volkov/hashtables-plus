@@ -8,7 +8,7 @@ description:
   Provides advanced data structures built on top of the ones from the 
   \"hashtables\" library: multimap, set, "StableName"-based structures.
 category:
-  Data, Hash, Hash Table
+  Data, Data Structures
 homepage:
   https://github.com/nikita-volkov/hashtables-plus 
 bug-reports:
