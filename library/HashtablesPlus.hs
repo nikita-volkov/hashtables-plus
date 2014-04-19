@@ -160,41 +160,48 @@ type Linear = Data.HashTable.ST.Linear.HashTable
 -------------------------
 
 -- | 
--- A newtype wrapper over a 'HashTable' implementation @t@.
+-- A type synonym for a 'HashTable' implementation @t@.
 -- 
 -- E.g.:
 -- 
 -- @
 -- type CuckooTable k v = 'Table' 'Cuckoo' k v
 -- @
-newtype Table t k v = Table (T.IOHashTable t k v)
+type Table t k v = t RealWorld k v
 
 type instance Row (Table t k v) = (k, v)
 type instance UniqueKey (Table t k v) = k
 type instance Value (Table t k v) = v
 
 instance (HashTable t, Key k) => Collection (Table t k v) where
-  new = Table <$> T.new
-  foldM (Table t) z f = T.foldM f z t
+  {-# INLINE new #-}
+  new = T.new
+  {-# INLINE foldM #-}
+  foldM t z f = T.foldM f z t
 
 instance (HashTable t, Key k) => Lookup (Table t k v) where
-  lookup (Table t) = T.lookup t
+  {-# INLINE lookup #-}
+  lookup t = T.lookup t
 
 instance (HashTable t, Key k) => Elem (Table t k v)
 
 instance (HashTable t, Key k) => Insert (Table t k v) where
-  insert (Table t) (k, v) = do
+  {-# INLINE insert #-}
+  insert t (k, v) = do
     T.lookup t k >>= \case
       Just v' -> return False 
       Nothing -> T.insert t k v >> return True
-  insertFast (Table t) (k, v) = T.insert t k v
+  {-# INLINE insertFast #-}
+  insertFast t (k, v) = T.insert t k v
 
 instance (HashTable t, Key k) => Delete (Table t k v) where
-  delete (Table t) k = do
+  {-# INLINE delete #-}
+  delete t k = do
     T.lookup t k >>= \case
       Just v' -> return False 
       Nothing -> T.delete t k >> return True
-  deleteFast (Table t) k = T.delete t k
+  {-# INLINE deleteFast #-}
+  deleteFast t k = T.delete t k
 
 
 
