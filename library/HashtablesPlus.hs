@@ -7,9 +7,11 @@ module HashtablesPlus
   HashRefSet,
   MultiTable,
   Sized,
-  -- * HashTable Implementations
+  -- * Algorithm
+  Algorithm,
+  -- ** Implementations
   -- | 
-  -- These are aliases of implementations of a class 'HashTable',
+  -- Aliases of implementations of a class 'Data.HashTable.Class.HashTable',
   -- which provide different performance and memory consumption characteristics.
   -- They are used as parameters to data structures.
   -- For more info refer to the documentation on aliased types.
@@ -41,6 +43,7 @@ import qualified Data.HashTable.IO as T
 import qualified Data.HashTable.ST.Basic
 import qualified Data.HashTable.ST.Cuckoo
 import qualified Data.HashTable.ST.Linear
+import qualified Data.HashTable.Class
 
 
 -- * Shared Interface
@@ -147,11 +150,27 @@ type Key k = (Hashable k, Eq k)
 
 
 
--- * 'HashTable' Implementations
+-- * Algorithm
 -------------------------
 
+-- |
+-- An alias to a 'Data.HashTable.Class.HashTable' constraint of the 
+-- \"hashtables\" library.
+type Algorithm = Data.HashTable.Class.HashTable
+
+-- ** Implementations
+-------------------------
+
+-- |
+-- The fastest, but the most memory-hungry implementation.
 type Basic = Data.HashTable.ST.Basic.HashTable
+
+-- |
+-- The implementation with a medium performance and memory consumption.
 type Cuckoo = Data.HashTable.ST.Cuckoo.HashTable
+
+-- |
+-- The implementation with a low performance, but also a low memory consumption.
 type Linear = Data.HashTable.ST.Linear.HashTable
 
 
@@ -173,19 +192,19 @@ type instance Row (Table t k v) = (k, v)
 type instance UniqueKey (Table t k v) = k
 type instance Value (Table t k v) = v
 
-instance (HashTable t, Key k) => Collection (Table t k v) where
+instance (Algorithm t, Key k) => Collection (Table t k v) where
   {-# INLINE new #-}
   new = T.new
   {-# INLINE foldM #-}
   foldM t z f = T.foldM f z t
 
-instance (HashTable t, Key k) => Lookup (Table t k v) where
+instance (Algorithm t, Key k) => Lookup (Table t k v) where
   {-# INLINE lookup #-}
   lookup t = T.lookup t
 
-instance (HashTable t, Key k) => Elem (Table t k v)
+instance (Algorithm t, Key k) => Elem (Table t k v)
 
-instance (HashTable t, Key k) => Insert (Table t k v) where
+instance (Algorithm t, Key k) => Insert (Table t k v) where
   {-# INLINE insert #-}
   insert t (k, v) = do
     T.lookup t k >>= \case
@@ -194,7 +213,7 @@ instance (HashTable t, Key k) => Insert (Table t k v) where
   {-# INLINE insertFast #-}
   insertFast t (k, v) = T.insert t k v
 
-instance (HashTable t, Key k) => Delete (Table t k v) where
+instance (Algorithm t, Key k) => Delete (Table t k v) where
   {-# INLINE delete #-}
   delete t k = do
     T.lookup t k >>= \case
@@ -229,15 +248,15 @@ type instance Row (Set t a) = a
 type instance UniqueKey (Set t a) = a
 type instance Value (Set t a) = a
 
-instance (HashTable t, Key a) => Collection (Set t a) where
+instance (Algorithm t, Key a) => Collection (Set t a) where
   new = Set <$> T.new
   foldM (Set table) z f = T.foldM f' z table where 
     f' z (a, _) = f z a
 
-instance (HashTable t, Key a) => Elem (Set t a) where
+instance (Algorithm t, Key a) => Elem (Set t a) where
   elem (Set table) a = T.lookup table a >>= return . isJust
 
-instance (HashTable t, Key a) => Insert (Set t a) where
+instance (Algorithm t, Key a) => Insert (Set t a) where
   insert (Set table) a = do
     T.lookup table a >>= \case
       Just _ -> return False
@@ -246,7 +265,7 @@ instance (HashTable t, Key a) => Insert (Set t a) where
         return True
   insertFast (Set table) a = T.insert table a ()
 
-instance (HashTable t, Key a) => Delete (Set t a) where
+instance (Algorithm t, Key a) => Delete (Set t a) where
   delete (Set table) a = do
     T.lookup table a >>= \case
       Just _ -> do
@@ -275,15 +294,15 @@ type instance Row (HashRefSet t a) = HR.HashRef a
 type instance UniqueKey (HashRefSet t a) = HR.HashRef a
 type instance Value (HashRefSet t a) = HR.HashRef a
 
-instance (HashTable t) => Collection (HashRefSet t a) where
+instance (Algorithm t) => Collection (HashRefSet t a) where
   new = HashRefSet <$> T.new
   foldM (HashRefSet table) z f = T.foldM f' z table where 
     f' z (sn, a) = f z (HR.HashRef sn a)
 
-instance (HashTable t) => Elem (HashRefSet t a) where
+instance (Algorithm t) => Elem (HashRefSet t a) where
   elem (HashRefSet table) (HR.HashRef sn a) = T.lookup table sn >>= return . isJust
 
-instance (HashTable t) => Insert (HashRefSet t a) where
+instance (Algorithm t) => Insert (HashRefSet t a) where
   insert (HashRefSet table) (HR.HashRef sn a) = do
     T.lookup table sn >>= \case
       Just _ -> return False
@@ -292,7 +311,7 @@ instance (HashTable t) => Insert (HashRefSet t a) where
         return True
   insertFast (HashRefSet table) (HR.HashRef sn a) = T.insert table sn a
 
-instance (HashTable t) => Delete (HashRefSet t a) where
+instance (Algorithm t) => Delete (HashRefSet t a) where
   delete (HashRefSet table) (HR.HashRef sn a) = do
     T.lookup table sn >>= \case
       Just _ -> do
@@ -380,28 +399,28 @@ type instance UniqueKey (MultiTable t k s) = (k, UniqueKey s)
 type instance MultiKey (MultiTable t k s) = k
 type instance Value (MultiTable t k s) = Value s
 
-instance (HashTable t, Key k, Collection s) => 
+instance (Algorithm t, Key k, Collection s) => 
          Collection (MultiTable t k s) where
   new = MultiTable <$> T.new
   foldM (MultiTable t) z f = T.foldM f' z t where
     f' z (k, s) = foldM s z f'' where
       f'' z v = f z (k, v)
 
-instance (HashTable t, Key k, Collection s, Value s ~ Row s) => 
+instance (Algorithm t, Key k, Collection s, Value s ~ Row s) => 
          LookupMulti (MultiTable t k s) where
   lookupMulti (MultiTable t) k = do
     T.lookup t k >>= \case
       Nothing -> return []
       Just s -> toList s
 
-instance (HashTable t, Key k, Elem s) => 
+instance (Algorithm t, Key k, Elem s) => 
          Elem (MultiTable t k s) where
   elem (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
       Just s -> elem s v
 
-instance (HashTable t, Key k, Insert s) => 
+instance (Algorithm t, Key k, Insert s) => 
          Insert (MultiTable t k s) where
   insert (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
@@ -421,7 +440,7 @@ instance (HashTable t, Key k, Insert s) =>
       Just s -> do
         insertFast s v
 
-instance (HashTable t, Key k, Delete c) => Delete (MultiTable t k c) where
+instance (Algorithm t, Key k, Delete c) => Delete (MultiTable t k c) where
   delete (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
@@ -431,7 +450,7 @@ instance (HashTable t, Key k, Delete c) => Delete (MultiTable t k c) where
       Nothing -> return ()
       Just s -> deleteFast s v
       
-instance (HashTable t, Key k, Delete c) => Delete (MultiTable t k (Sized c)) where
+instance (Algorithm t, Key k, Delete c) => Delete (MultiTable t k (Sized c)) where
   delete (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
