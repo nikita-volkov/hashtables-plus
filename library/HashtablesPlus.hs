@@ -177,32 +177,32 @@ type Linear = Data.HashTable.ST.Linear.HashTable
 -------------------------
 
 -- | 
--- A type synonym for a 'HashTable' implementation @t@.
+-- A type synonym for an 'T.IOHashTable' with 'Algorithm' @a@.
 -- 
 -- E.g.:
 -- 
 -- @
 -- type CuckooTable k v = 'Table' 'Cuckoo' k v
 -- @
-type Table t k v = t RealWorld k v
+type Table a k v = a RealWorld k v
 
-type instance Row (Table t k v) = (k, v)
-type instance UniqueKey (Table t k v) = k
-type instance Value (Table t k v) = v
+type instance Row (Table a k v) = (k, v)
+type instance UniqueKey (Table a k v) = k
+type instance Value (Table a k v) = v
 
-instance (Algorithm t, Key k) => Collection (Table t k v) where
+instance (Algorithm a, Key k) => Collection (Table a k v) where
   {-# INLINE new #-}
   new = T.new
   {-# INLINE foldM #-}
   foldM t z f = T.foldM f z t
 
-instance (Algorithm t, Key k) => Lookup (Table t k v) where
+instance (Algorithm a, Key k) => Lookup (Table a k v) where
   {-# INLINE lookup #-}
   lookup t = T.lookup t
 
-instance (Algorithm t, Key k) => Elem (Table t k v)
+instance (Algorithm a, Key k) => Elem (Table a k v)
 
-instance (Algorithm t, Key k) => Insert (Table t k v) where
+instance (Algorithm a, Key k) => Insert (Table a k v) where
   {-# INLINE insert #-}
   insert t (k, v) = do
     T.lookup t k >>= \case
@@ -211,7 +211,7 @@ instance (Algorithm t, Key k) => Insert (Table t k v) where
   {-# INLINE insertFast #-}
   insertFast t (k, v) = T.insert t k v
 
-instance (Algorithm t, Key k) => Delete (Table t k v) where
+instance (Algorithm a, Key k) => Delete (Table a k v) where
   {-# INLINE delete #-}
   delete t k = do
     T.lookup t k >>= \case
@@ -232,29 +232,29 @@ instance (Algorithm t, Key k) => Delete (Table t k v) where
 -- A set of values, 
 -- which have instances for 'Eq' and 'Hashable'.
 -- 
--- @t@ is the underlying 'HashTable' implementation, 
--- @a@ is the item.
+-- @a@ is the underlying 'Algorithm', 
+-- @v@ is the item.
 -- 
 -- E.g.:
 -- 
 -- @
--- type CuckooSet a = 'Set' 'Cuckoo' a
+-- type CuckooSet v = 'Set' 'Cuckoo' v
 -- @
-newtype Set t a = Set (T.IOHashTable t a ())
+newtype Set a v = Set (T.IOHashTable a v ())
 
-type instance Row (Set t a) = a
-type instance UniqueKey (Set t a) = a
-type instance Value (Set t a) = a
+type instance Row (Set a v) = v
+type instance UniqueKey (Set a v) = v
+type instance Value (Set a v) = v
 
-instance (Algorithm t, Key a) => Collection (Set t a) where
+instance (Algorithm a, Key v) => Collection (Set a v) where
   new = Set <$> T.new
   foldM (Set table) z f = T.foldM f' z table where 
     f' z (a, _) = f z a
 
-instance (Algorithm t, Key a) => Elem (Set t a) where
+instance (Algorithm a, Key v) => Elem (Set a v) where
   elem (Set table) a = T.lookup table a >>= return . isJust
 
-instance (Algorithm t, Key a) => Insert (Set t a) where
+instance (Algorithm a, Key v) => Insert (Set a v) where
   insert (Set table) a = do
     T.lookup table a >>= \case
       Just _ -> return False
@@ -263,7 +263,7 @@ instance (Algorithm t, Key a) => Insert (Set t a) where
         return True
   insertFast (Set table) a = T.insert table a ()
 
-instance (Algorithm t, Key a) => Delete (Set t a) where
+instance (Algorithm a, Key v) => Delete (Set a v) where
   delete (Set table) a = do
     T.lookup table a >>= \case
       Just _ -> do
@@ -278,29 +278,29 @@ instance (Algorithm t, Key a) => Delete (Set t a) where
 -- | 
 -- A specialized set of 'HR.HashRef's.
 -- 
--- @t@ is the underlying 'HashTable' implementation, 
--- @a@ is the item.
+-- @a@ is the underlying 'Algorithm', 
+-- @v@ is the item.
 -- 
 -- E.g.:
 -- 
 -- @
--- type LinearHashRefSet a = 'HashRefSet' 'Linear' a
+-- type LinearHashRefSet v = 'HashRefSet' 'Linear' v
 -- @
-newtype HashRefSet t a = HashRefSet (T.IOHashTable t (StableName a) a)
+newtype HashRefSet a v = HashRefSet (T.IOHashTable a (StableName v) v)
 
-type instance Row (HashRefSet t a) = HR.HashRef a
-type instance UniqueKey (HashRefSet t a) = HR.HashRef a
-type instance Value (HashRefSet t a) = HR.HashRef a
+type instance Row (HashRefSet a v) = HR.HashRef v
+type instance UniqueKey (HashRefSet a v) = HR.HashRef v
+type instance Value (HashRefSet a v) = HR.HashRef v
 
-instance (Algorithm t) => Collection (HashRefSet t a) where
+instance (Algorithm a) => Collection (HashRefSet a v) where
   new = HashRefSet <$> T.new
   foldM (HashRefSet table) z f = T.foldM f' z table where 
     f' z (sn, a) = f z (HR.HashRef sn a)
 
-instance (Algorithm t) => Elem (HashRefSet t a) where
+instance (Algorithm a) => Elem (HashRefSet a v) where
   elem (HashRefSet table) (HR.HashRef sn a) = T.lookup table sn >>= return . isJust
 
-instance (Algorithm t) => Insert (HashRefSet t a) where
+instance (Algorithm a) => Insert (HashRefSet a v) where
   insert (HashRefSet table) (HR.HashRef sn a) = do
     T.lookup table sn >>= \case
       Just _ -> return False
@@ -309,7 +309,7 @@ instance (Algorithm t) => Insert (HashRefSet t a) where
         return True
   insertFast (HashRefSet table) (HR.HashRef sn a) = T.insert table sn a
 
-instance (Algorithm t) => Delete (HashRefSet t a) where
+instance (Algorithm a) => Delete (HashRefSet a v) where
   delete (HashRefSet table) (HR.HashRef sn a) = do
     T.lookup table sn >>= \case
       Just _ -> do
@@ -375,7 +375,7 @@ instance (Collection c) => Null (Sized c)
 -------------------------
 
 -- |
--- A multitable (or multimap) with underlying 'HashTable' @t@, key @k@ and 
+-- A multitable (or multimap) with an underlying 'Algorithm' @a@, a key @k@ and 
 -- a set implementation @s@.
 -- 
 -- E.g.:
@@ -390,36 +390,36 @@ instance (Collection c) => Null (Sized c)
 -- @
 -- MultiTable Basic k ('Sized' (Set Basic v))
 -- @
-newtype MultiTable t k s = MultiTable (T.IOHashTable t k s)
+newtype MultiTable a k s = MultiTable (T.IOHashTable a k s)
 
-type instance Row (MultiTable t k s) = (k, Row s)
-type instance UniqueKey (MultiTable t k s) = (k, UniqueKey s)
-type instance MultiKey (MultiTable t k s) = k
-type instance Value (MultiTable t k s) = Value s
+type instance Row (MultiTable a k s) = (k, Row s)
+type instance UniqueKey (MultiTable a k s) = (k, UniqueKey s)
+type instance MultiKey (MultiTable a k s) = k
+type instance Value (MultiTable a k s) = Value s
 
-instance (Algorithm t, Key k, Collection s) => 
-         Collection (MultiTable t k s) where
+instance (Algorithm a, Key k, Collection s) => 
+         Collection (MultiTable a k s) where
   new = MultiTable <$> T.new
   foldM (MultiTable t) z f = T.foldM f' z t where
     f' z (k, s) = foldM s z f'' where
       f'' z v = f z (k, v)
 
-instance (Algorithm t, Key k, Collection s, Value s ~ Row s) => 
-         LookupMulti (MultiTable t k s) where
+instance (Algorithm a, Key k, Collection s, Value s ~ Row s) => 
+         LookupMulti (MultiTable a k s) where
   lookupMulti (MultiTable t) k = do
     T.lookup t k >>= \case
       Nothing -> return []
       Just s -> toList s
 
-instance (Algorithm t, Key k, Elem s) => 
-         Elem (MultiTable t k s) where
+instance (Algorithm a, Key k, Elem s) => 
+         Elem (MultiTable a k s) where
   elem (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
       Just s -> elem s v
 
-instance (Algorithm t, Key k, Insert s) => 
-         Insert (MultiTable t k s) where
+instance (Algorithm a, Key k, Insert s) => 
+         Insert (MultiTable a k s) where
   insert (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> do
@@ -438,7 +438,7 @@ instance (Algorithm t, Key k, Insert s) =>
       Just s -> do
         insertFast s v
 
-instance (Algorithm t, Key k, Delete c) => Delete (MultiTable t k c) where
+instance (Algorithm a, Key k, Delete s) => Delete (MultiTable a k s) where
   delete (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
@@ -448,7 +448,7 @@ instance (Algorithm t, Key k, Delete c) => Delete (MultiTable t k c) where
       Nothing -> return ()
       Just s -> deleteFast s v
       
-instance (Algorithm t, Key k, Delete c) => Delete (MultiTable t k (Sized c)) where
+instance (Algorithm a, Key k, Delete s) => Delete (MultiTable a k (Sized s)) where
   delete (MultiTable t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
