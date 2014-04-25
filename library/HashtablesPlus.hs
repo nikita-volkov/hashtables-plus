@@ -121,13 +121,11 @@ class Collection c => Delete c where
 
 class Collection c => Size c where
   -- |
-  -- /O(1)/.
   -- Get the size of a collection.
   size :: c -> IO Int
 
 class Collection c => Null c where
   -- |
-  -- /O(1)/.
   -- Check whether a collection is empty.
   null :: c -> IO Bool
   default null :: (Size c) => c -> IO Bool
