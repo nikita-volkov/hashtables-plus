@@ -324,57 +324,6 @@ instance (Algorithm a) => Delete (HashRefSet a v) where
 
 
 
--- * Sized
--------------------------
-
--- |
--- A wrapper over a 'Collection',
--- which adds 'null' and 'size' functions of /O(1)/ complexity.
--- 
--- E.g.:
--- 
--- @
--- type SizedLinearTable k v = 'Sized' ('Map' 'Linear' k v)
--- @
-data Sized c = Sized !c {-# UNPACK #-} !(IORef Int)
-
-type instance Row (Sized c) = Row c
-type instance UniqueKey (Sized c) = UniqueKey c
-type instance MultiKey (Sized c) = MultiKey c
-type instance Value (Sized c) = Value c
-
-instance (Collection c) => Collection (Sized c) where
-  new = Sized <$> new <*> newIORef 0
-  traverse (Sized c _) = traverse c
-
-instance (Lookup c) => Lookup (Sized c) where
-  lookup (Sized c _) a = lookup c a
-
-instance (TraverseMulti c) => TraverseMulti (Sized c) where
-  traverseMulti (Sized c _) = traverseMulti c
-
-instance (Elem c) => Elem (Sized c) where
-  elem (Sized c _) a = elem c a
-
-instance (Insert c) => Insert (Sized c) where
-  insert (Sized c size) a = do
-    ok <- insert c a  
-    when ok $ modifyIORef size succ
-    return ok
-
-instance (Delete c) => Delete (Sized c) where
-  delete (Sized c size) a = do
-    ok <- delete c a
-    when ok $ modifyIORef size pred
-    return ok
-
-instance (Collection c) => Size (Sized c) where
-  size (Sized _ s) = readIORef s
-
-instance (Collection c) => Null (Sized c)
-
-
-
 -- * Multimap
 -------------------------
 
@@ -470,3 +419,54 @@ instance (Algorithm a, Key k, Delete s) => Delete (Multimap a k (Sized s)) where
           False -> return ()
           True -> T.delete t k
       
+
+
+-- * Sized
+-------------------------
+
+-- |
+-- A wrapper over a 'Collection',
+-- which adds 'null' and 'size' functions of /O(1)/ complexity.
+-- 
+-- E.g.:
+-- 
+-- @
+-- type SizedLinearTable k v = 'Sized' ('Map' 'Linear' k v)
+-- @
+data Sized c = Sized !c {-# UNPACK #-} !(IORef Int)
+
+type instance Row (Sized c) = Row c
+type instance UniqueKey (Sized c) = UniqueKey c
+type instance MultiKey (Sized c) = MultiKey c
+type instance Value (Sized c) = Value c
+
+instance (Collection c) => Collection (Sized c) where
+  new = Sized <$> new <*> newIORef 0
+  traverse (Sized c _) = traverse c
+
+instance (Lookup c) => Lookup (Sized c) where
+  lookup (Sized c _) a = lookup c a
+
+instance (TraverseMulti c) => TraverseMulti (Sized c) where
+  traverseMulti (Sized c _) = traverseMulti c
+
+instance (Elem c) => Elem (Sized c) where
+  elem (Sized c _) a = elem c a
+
+instance (Insert c) => Insert (Sized c) where
+  insert (Sized c size) a = do
+    ok <- insert c a  
+    when ok $ modifyIORef size succ
+    return ok
+
+instance (Delete c) => Delete (Sized c) where
+  delete (Sized c size) a = do
+    ok <- delete c a
+    when ok $ modifyIORef size pred
+    return ok
+
+instance (Collection c) => Size (Sized c) where
+  size (Sized _ s) = readIORef s
+
+instance (Collection c) => Null (Sized c)
+
