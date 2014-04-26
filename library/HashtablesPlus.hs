@@ -25,19 +25,19 @@ module HashtablesPlus
   MultiKey,
   Value,
   Collection(..),
+  toList,
   Lookup(..),
-  LookupMulti(..),
+  TraverseMulti(..),
+  lookupMulti,
   Elem(..),
   Insert(..),
   Delete(..),
   Size(..),
   Null(..),
-  forM_,
-  toList,
 )
 where
 
-import HashtablesPlus.Prelude hiding (elem, toList, null, insert, delete, lookup, foldM, forM_)
+import HashtablesPlus.Prelude hiding (traverse, elem, toList, null, insert, delete, lookup, foldM, forM_)
 import qualified HashtablesPlus.HashRef as HR
 import qualified Data.HashTable.IO as T
 import qualified Data.HashTable.ST.Basic
@@ -76,18 +76,35 @@ class Collection c where
   -- Create a new collection.
   new :: IO c
   -- |
-  -- Strictly fold over the rows.
-  foldM :: c -> r -> (r -> Row c -> IO r) -> IO r
+  -- Traverse thru all the rows of with side effects.
+  traverse :: c -> (Row c -> IO ()) -> IO ()
+
+-- |
+-- /O(n)/.
+-- Convert a collection to a list.
+toList :: (Collection c) => c -> IO [Row c]
+toList c = do
+  ref <- newIORef []
+  traverse c $ \r -> modifyIORef ref (r:)
+  readIORef ref
 
 class Collection c => Lookup c where
   -- |
   -- Lookup an item by a unique key.
   lookup :: c -> UniqueKey c -> IO (Maybe (Value c))
 
-class Collection c => LookupMulti c where
+class Collection c => TraverseMulti c where
   -- |
-  -- Lookup multiple items by a non-unique key.
-  lookupMulti :: c -> MultiKey c -> IO [Value c]
+  -- Traverse items matching a non-unique key.
+  traverseMulti :: c -> MultiKey c -> (Value c -> IO ()) -> IO ()
+
+-- |
+-- Lookup multiple items by a non-unique key.
+lookupMulti :: (TraverseMulti c) => c -> MultiKey c -> IO [Value c]
+lookupMulti c k = do
+  ref <- newIORef []
+  traverseMulti c k $ \v -> modifyIORef ref (v:)
+  readIORef ref
 
 class Collection c => Elem c where
   -- |
@@ -130,17 +147,6 @@ class Collection c => Null c where
   null :: c -> IO Bool
   default null :: (Size c) => c -> IO Bool
   null = fmap (<= 0) . size
-
--- |
--- Traverse thru all the rows of a collection with side effects.
-forM_ :: (Collection c) => c -> (Row c -> IO ()) -> IO ()
-forM_ c f = foldM c () (\() r -> f r)
-
--- |
--- /O(n)/.
--- Convert a collection to a list.
-toList :: (Collection c) => c -> IO [Row c]
-toList c = foldM c [] (\li ro -> return $ ro : li)
 
 -- |
 -- A constraint for values usable as hash table key.
@@ -193,8 +199,8 @@ type instance Value (Table a k v) = v
 instance (Algorithm a, Key k) => Collection (Table a k v) where
   {-# INLINE new #-}
   new = T.new
-  {-# INLINE foldM #-}
-  foldM t z f = T.foldM f z t
+  {-# INLINE traverse #-}
+  traverse = flip T.mapM_
 
 instance (Algorithm a, Key k) => Lookup (Table a k v) where
   {-# INLINE lookup #-}
@@ -248,8 +254,7 @@ type instance Value (Set a v) = v
 
 instance (Algorithm a, Key v) => Collection (Set a v) where
   new = Set <$> T.new
-  foldM (Set table) z f = T.foldM f' z table where 
-    f' z (a, _) = f z a
+  traverse (Set table) f = traverse table $ f . fst
 
 instance (Algorithm a, Key v) => Elem (Set a v) where
   elem (Set table) a = T.lookup table a >>= return . isJust
@@ -294,8 +299,7 @@ type instance Value (HashRefSet a v) = HR.HashRef v
 
 instance (Algorithm a) => Collection (HashRefSet a v) where
   new = HashRefSet <$> T.new
-  foldM (HashRefSet table) z f = T.foldM f' z table where 
-    f' z (sn, a) = f z (HR.HashRef sn a)
+  traverse (HashRefSet table) f = traverse table $ f . \(sn, a) -> HR.HashRef sn a
 
 instance (Algorithm a) => Elem (HashRefSet a v) where
   elem (HashRefSet table) (HR.HashRef sn a) = T.lookup table sn >>= return . isJust
@@ -341,13 +345,13 @@ type instance Value (Sized c) = Value c
 
 instance (Collection c) => Collection (Sized c) where
   new = Sized <$> new <*> newIORef 0
-  foldM (Sized c _) = foldM c
+  traverse (Sized c _) = traverse c
 
 instance (Lookup c) => Lookup (Sized c) where
   lookup (Sized c _) a = lookup c a
 
-instance (LookupMulti c) => LookupMulti (Sized c) where
-  lookupMulti (Sized c _) k = lookupMulti c k
+instance (TraverseMulti c) => TraverseMulti (Sized c) where
+  traverseMulti (Sized c _) = traverseMulti c
 
 instance (Elem c) => Elem (Sized c) where
   elem (Sized c _) a = elem c a
@@ -400,16 +404,13 @@ type instance Value (MultiTable a k s) = Value s
 instance (Algorithm a, Key k, Collection s) => 
          Collection (MultiTable a k s) where
   new = MultiTable <$> T.new
-  foldM (MultiTable t) z f = T.foldM f' z t where
-    f' z (k, s) = foldM s z f'' where
-      f'' z v = f z (k, v)
+  traverse (MultiTable t) f = 
+    traverse t $ \(k, set) -> traverse set $ \v -> f (k, v)
 
 instance (Algorithm a, Key k, Collection s, Value s ~ Row s) => 
-         LookupMulti (MultiTable a k s) where
-  lookupMulti (MultiTable t) k = do
-    T.lookup t k >>= \case
-      Nothing -> return []
-      Just s -> toList s
+         TraverseMulti (MultiTable a k s) where
+  traverseMulti (MultiTable t) k f =
+    T.lookup t k >>= maybe (return ()) (flip traverse f)
 
 instance (Algorithm a, Key k, Elem s) => 
          Elem (MultiTable a k s) where
