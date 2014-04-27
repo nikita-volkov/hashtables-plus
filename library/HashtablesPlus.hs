@@ -2,10 +2,10 @@
 module HashtablesPlus 
 (
   -- * Data Structures
-  Table,
+  Map,
   Set,
   HashRefSet,
-  MultiTable,
+  Multimap,
   Sized,
   -- * Algorithm
   Algorithm,
@@ -188,27 +188,27 @@ type Linear = Data.HashTable.ST.Linear.HashTable
 -- E.g.:
 -- 
 -- @
--- type CuckooTable k v = 'Table' 'Cuckoo' k v
+-- type CuckooTable k v = 'Map' 'Cuckoo' k v
 -- @
-type Table a k v = a RealWorld k v
+type Map a k v = a RealWorld k v
 
-type instance Row (Table a k v) = (k, v)
-type instance UniqueKey (Table a k v) = k
-type instance Value (Table a k v) = v
+type instance Row (Map a k v) = (k, v)
+type instance UniqueKey (Map a k v) = k
+type instance Value (Map a k v) = v
 
-instance (Algorithm a, Key k) => Collection (Table a k v) where
+instance (Algorithm a, Key k) => Collection (Map a k v) where
   {-# INLINE new #-}
   new = T.new
   {-# INLINE traverse #-}
   traverse = flip T.mapM_
 
-instance (Algorithm a, Key k) => Lookup (Table a k v) where
+instance (Algorithm a, Key k) => Lookup (Map a k v) where
   {-# INLINE lookup #-}
   lookup t = T.lookup t
 
-instance (Algorithm a, Key k) => Elem (Table a k v)
+instance (Algorithm a, Key k) => Elem (Map a k v)
 
-instance (Algorithm a, Key k) => Insert (Table a k v) where
+instance (Algorithm a, Key k) => Insert (Map a k v) where
   {-# INLINE insert #-}
   insert t (k, v) = do
     T.lookup t k >>= \case
@@ -217,7 +217,7 @@ instance (Algorithm a, Key k) => Insert (Table a k v) where
   {-# INLINE insertFast #-}
   insertFast t (k, v) = T.insert t k v
 
-instance (Algorithm a, Key k) => Delete (Table a k v) where
+instance (Algorithm a, Key k) => Delete (Map a k v) where
   {-# INLINE delete #-}
   delete t k = do
     T.lookup t k >>= \case
@@ -334,7 +334,7 @@ instance (Algorithm a) => Delete (HashRefSet a v) where
 -- E.g.:
 -- 
 -- @
--- type SizedLinearTable k v = 'Sized' ('Table' 'Linear' k v)
+-- type SizedLinearTable k v = 'Sized' ('Map' 'Linear' k v)
 -- @
 data Sized c = Sized !c {-# UNPACK #-} !(IORef Int)
 
@@ -375,53 +375,53 @@ instance (Collection c) => Null (Sized c)
 
 
 
--- * MultiTable
+-- * Multimap
 -------------------------
 
 -- |
--- A multitable (or multimap) with an underlying 'Algorithm' @a@, a key @k@ and 
+-- A multimap with an underlying 'Algorithm' @a@, a key @k@ and 
 -- a set implementation @s@.
 -- 
 -- E.g.:
 -- 
 -- @
--- type BasicMultiTable k v = 'MultiTable' 'Basic' k ('Set' 'Basic' v)
+-- type BasicMultimap k v = 'Multimap' 'Basic' k ('Set' 'Basic' v)
 -- @
 -- 
 -- If a 'Sized' implementation of set is specified, 
 -- a more space efficient instance of 'Delete' will be used. E.g.:
 -- 
 -- @
--- MultiTable Basic k ('Sized' (Set Basic v))
+-- Multimap Basic k ('Sized' (Set Basic v))
 -- @
-newtype MultiTable a k s = MultiTable (T.IOHashTable a k s)
+newtype Multimap a k s = Multimap (T.IOHashTable a k s)
 
-type instance Row (MultiTable a k s) = (k, Row s)
-type instance UniqueKey (MultiTable a k s) = (k, UniqueKey s)
-type instance MultiKey (MultiTable a k s) = k
-type instance Value (MultiTable a k s) = Value s
+type instance Row (Multimap a k s) = (k, Row s)
+type instance UniqueKey (Multimap a k s) = (k, UniqueKey s)
+type instance MultiKey (Multimap a k s) = k
+type instance Value (Multimap a k s) = Value s
 
 instance (Algorithm a, Key k, Collection s) => 
-         Collection (MultiTable a k s) where
-  new = MultiTable <$> T.new
-  traverse (MultiTable t) f = 
+         Collection (Multimap a k s) where
+  new = Multimap <$> T.new
+  traverse (Multimap t) f = 
     traverse t $ \(k, set) -> traverse set $ \v -> f (k, v)
 
 instance (Algorithm a, Key k, Collection s, Value s ~ Row s) => 
-         TraverseMulti (MultiTable a k s) where
-  traverseMulti (MultiTable t) k f =
+         TraverseMulti (Multimap a k s) where
+  traverseMulti (Multimap t) k f =
     T.lookup t k >>= maybe (return ()) (flip traverse f)
 
 instance (Algorithm a, Key k, Elem s) => 
-         Elem (MultiTable a k s) where
-  elem (MultiTable t) (k, v) = do
+         Elem (Multimap a k s) where
+  elem (Multimap t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
       Just s -> elem s v
 
 instance (Algorithm a, Key k, Insert s) => 
-         Insert (MultiTable a k s) where
-  insert (MultiTable t) (k, v) = do
+         Insert (Multimap a k s) where
+  insert (Multimap t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> do
         s <- new
@@ -430,7 +430,7 @@ instance (Algorithm a, Key k, Insert s) =>
         return True
       Just s -> do
         insert s v
-  insertFast (MultiTable t) (k, v) = do
+  insertFast (Multimap t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> do
         s <- new
@@ -439,18 +439,18 @@ instance (Algorithm a, Key k, Insert s) =>
       Just s -> do
         insertFast s v
 
-instance (Algorithm a, Key k, Delete s) => Delete (MultiTable a k s) where
-  delete (MultiTable t) (k, v) = do
+instance (Algorithm a, Key k, Delete s) => Delete (Multimap a k s) where
+  delete (Multimap t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
       Just s -> delete s v
-  deleteFast (MultiTable t) (k, v) = do
+  deleteFast (Multimap t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return ()
       Just s -> deleteFast s v
       
-instance (Algorithm a, Key k, Delete s) => Delete (MultiTable a k (Sized s)) where
-  delete (MultiTable t) (k, v) = do
+instance (Algorithm a, Key k, Delete s) => Delete (Multimap a k (Sized s)) where
+  delete (Multimap t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return False
       Just s -> do
@@ -461,7 +461,7 @@ instance (Algorithm a, Key k, Delete s) => Delete (MultiTable a k (Sized s)) whe
               False -> return ()
               True -> T.delete t k
             return True
-  deleteFast (MultiTable t) (k, v) = do
+  deleteFast (Multimap t) (k, v) = do
     T.lookup t k >>= \case
       Nothing -> return ()
       Just s -> do

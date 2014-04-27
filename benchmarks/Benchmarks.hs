@@ -17,7 +17,7 @@ main = do
       liftIO $ evaluate $! rnf rows
       C.subject "HashtablesPlus" $ do
         liftIO $ do
-          t :: H.Table H.Linear StrictText Int <- H.new
+          t :: H.Map H.Linear StrictText Int <- H.new
           forM_ rows $ H.insertFast t
       C.subject "Hashtables" $ do
         liftIO $ do
@@ -55,12 +55,12 @@ main = do
         liftIO $ forM [10000, 9000, 8000] $ \n -> do
           replicateM n $ (,) <$> R.generateName gen <*> R.generateVariate gen
       liftIO $! evaluate $! rnf $! rows
-      C.group "Multitable" $ do
+      C.group "Multimap" $ do
         C.group "Linear" $ do
-          forM_ rows (rowsInsertionSubject (undefined :: H.MultiTable H.Linear StrictText (H.Set H.Linear Int)))
-      C.group "Table" $ do
+          forM_ rows (rowsInsertionSubject (undefined :: H.Multimap H.Linear StrictText (H.Set H.Linear Int)))
+      C.group "Map" $ do
         C.group "Linear" $ do
-          forM_ rows (rowsInsertionSubject (undefined :: H.Table H.Linear StrictText Int))
+          forM_ rows (rowsInsertionSubject (undefined :: H.Map H.Linear StrictText Int))
 
 
 
