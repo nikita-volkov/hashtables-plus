@@ -47,13 +47,12 @@ import System.IO.Unsafe as Exports
 import System.IO as Exports (Handle, hClose)
 import System.IO.Error as Exports
 import Unsafe.Coerce as Exports
-import GHC.Exts as Exports hiding (Any, traceEvent)
 import GHC.Generics as Exports (Generic)
 import GHC.IO.Exception as Exports
 import Data.IORef as Exports
 import Data.STRef as Exports
 import Control.Monad.ST as Exports
-import Debug.Trace as Exports
+import Debug.Trace as Exports hiding (traceM)
 
 -- placeholders
 -------------------------
@@ -72,7 +71,7 @@ traceM s = trace s $ return ()
 
 bug = [e| $(Debug.Trace.LocationTH.failure) . (msg <>) |]
   where
-    msg = "A \"criterion-plus\" package bug: " :: String
+    msg = "A \"hashtables-plus\" package bug: " :: String
 
 bottom = [e| $bug "Bottom evaluated" |]
 
